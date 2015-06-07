@@ -87,12 +87,20 @@ int main(int argc, char *argv[])
 				total_bytes_read += bytes_read;
 				printSize(total_bytes_read);
         if (bytes_read == 0 || bytes_read != CHUNK_SIZE){
+						printf("\nTransfer complete.\n");
             break;
         }
  			}
 			fclose(fw);
 		}else if(strcmp("subir", cmd) == 0){
 			printf("Comando: Subir\n");
+			char * request = concat(cmd, " ");
+			request = concat(request, filename);
+
+			if (send(sockfd, request, strlen(request), 0) == -1)
+				perror("send");
+			free(request);
+			
 			FILE *fs = fopen(filename, "r");
 			if(fs == NULL)
 			{
