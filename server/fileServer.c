@@ -30,7 +30,7 @@ int main(){
 	int buf[MAXDATASIZE];
 	char cmd_buf[COMMAND_SIZE];
 	struct sockaddr_in server_address;
-	struct sockaddr_in remote_address;
+	struct sockaddr_in client_address;
 	int sin_size;
 	int yes = 1;
 	int numbytes;
@@ -45,6 +45,7 @@ int main(){
 		exit(1);
 	}
 
+	//Configures socket to make it reusable
 	if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &yes, sizeof(int)) == -1) {
 		perror("setsockopt");
 		exit(1);
@@ -79,55 +80,55 @@ int main(){
 
 	while(1){
 		sin_size = sizeof(struct sockaddr_in);
-		if ((new_fd = accept(sockfd, (struct sockaddr *)&remote_address, &sin_size)) == -1) {
+		if ((new_fd = accept(sockfd, (struct sockaddr *)&client_address, &sin_size)) == -1) {
 			perror("accept");
 			continue;
 		}
-		printf("server: got connection from %s\n", inet_ntoa(remote_address.sin_addr));
-		printf("Socket open on port %d.\n", ntohs(remote_address.sin_port));
+		printf("Server: connection received from %s\n", inet_ntoa(client_address.sin_addr));
+		printf("Socket open on port %d.\n", ntohs(client_address.sin_port));
 		//Starts a new process to handle connection
-		if (!fork()) {
+		int pid = fork();
+		if (!pid) {
 			//Closes server listener socket
 			close(sockfd);
-
-			//Child process stays listening for commands
-			bzero(cmd_buf, sizeof(cmd_buf));
-			if ((numbytes = recv(new_fd, cmd_buf, COMMAND_SIZE, 0)) == -1) {
-				perror("recv");
-				exit(1);
-			}
-
-			//Command and filename are separated in two char *
-			cmd = strtok(cmd_buf, " ");
-			filename = strtok(NULL, "\n");
-
-			if(strcmp("traer",cmd) == 0){
-				printf("Client requested update of file %s.\n", filename);
-
-				FILE *fs = fopen(filename, "r");
-				if(fs == NULL)
-				{
-				    printf("ERROR: File %s not found.\n", filename);
-				    exit(1);
+			while(1){
+				//Child process stays listening for commands
+				bzero(cmd_buf, sizeof(cmd_buf));
+				if ((numbytes = recv(new_fd, cmd_buf, COMMAND_SIZE, 0)) == -1) {
+					perror("recv");
+					exit(1);
 				}
 
-				char file_buf[CHUNK_SIZE];
-				int block_size = 0;
-				while((block_size = fread(file_buf, sizeof(char), CHUNK_SIZE, fs)) > 0){
-					if(send(new_fd, file_buf, block_size, 0) < 0){
-						perror("send");
-						exit(1);
+				//Command and filename are separated in two (char *)
+				cmd = strtok(cmd_buf, " ");
+				filename = strtok(NULL, "\n");
+
+				if(strcmp("traer",cmd) == 0){
+					printf("Client requested update of file %s.\n", filename);
+
+					FILE *fs = fopen(filename, "r");
+					if(fs == NULL)
+					{
+					    printf("ERROR: File %s not found.\n", filename);
+					    exit(1);
 					}
-					bzero(file_buf, CHUNK_SIZE);
+
+					char file_buf[CHUNK_SIZE];
+					int block_size = 0;
+					while((block_size = fread(file_buf, sizeof(char), CHUNK_SIZE, fs)) > 0){
+						if(send(new_fd, file_buf, block_size, 0) < 0){
+							perror("send");
+							exit(1);
+						}
+						bzero(file_buf, CHUNK_SIZE);
+					}
+					fclose(fs);
+				}else if(strcmp("subir",cmd) == 0){
+					printf("Client wants to upload file %s.\n", filename);
+				}else {
+					printf("Client sent an invalid command.\n");
 				}
-			}else if(strcmp("subir",cmd) == 0){
-				printf("Client wants to upload file %s.\n", filename);
-			}else {
-				printf("Client sent an invalid command.\n");
 			}
-			/*
-			if (send(new_fd, "YA COMPARE\n", 14, 0) == -1)
-				perror("send");*/
 			close(new_fd);
 			exit(0);
 		}

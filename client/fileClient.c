@@ -13,20 +13,21 @@
 #define PORT 7070
 
 //File transfer constants
-#define MAXDATASIZE 100
 #define CHUNK_SIZE 128
+#define COMMAND_SIZE 256
 
 int main(int argc, char *argv[])
 {
 	int sockfd, numbytes;
-	char buf[MAXDATASIZE];
 
 	struct hostent *he;
-	struct sockaddr_in their_addr;
+	struct sockaddr_in server_address;
+
 	if (argc != 3) {
-		fprintf(stderr,"usage: client hostname port\n");
+		fprintf(stderr,"Uso: cliente host_address port\n");
 		exit(1);
 	}
+
 	char * address = argv[1];
 	int port = atoi(argv[2]);
 
@@ -40,17 +41,18 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
-	their_addr.sin_family = AF_INET;
-	their_addr.sin_port = htons(port);
-	their_addr.sin_addr = *((struct in_addr *)he->h_addr);
-	memset(&(their_addr.sin_zero), '\0', 8);
-	if (connect(sockfd, (struct sockaddr *)&their_addr,sizeof(struct sockaddr)) == -1) {
+	//Client socket configuration
+	server_address.sin_family = AF_INET;
+	server_address.sin_port = htons(port);
+	server_address.sin_addr = *((struct in_addr *)he->h_addr);
+	memset(&(server_address.sin_zero), '\0', 8);
+	if (connect(sockfd, (struct sockaddr *)&server_address,sizeof(struct sockaddr)) == -1) {
 		perror("connect");
 		exit(1);
 	}
 
 	printf("Conexión exitosa al servidor %s:%d.\n", address, port);
-	char command[256];
+	char command[COMMAND_SIZE];
 	char *cmd;
 	char *filename;
 	while(1){
@@ -59,16 +61,8 @@ int main(int argc, char *argv[])
 		fgets(command, sizeof(command), stdin);
 		cmd = strtok(command, " ");
 		filename = strtok(NULL, "\n");
-		printf("%s", filename);
-		/*
-		int i = 0;
-		for(i = 0; i < strlen(filename); i++){
-			if(filename[i] == '\n')
-				filename[i] = '\0';
-		}*/
-		//filename[strlen(filename)] = '\0';
 
-		if(strcmp("traer",cmd) == 0){
+		if(strcmp("traer", cmd) == 0){
 			printf("Comando: Traer\n");
 			char * request = concat(cmd, " ");
 			request = concat(request, filename);
@@ -77,40 +71,51 @@ int main(int argc, char *argv[])
 				perror("send");
 			free(request);
 
-			FILE *fw = fopen(filename, "a");
+			FILE *fw = fopen(filename, "w");
 
-			char file_buf[CHUNK_SIZE];
-			bzero(file_buf, CHUNK_SIZE);
+			char file_buffer[CHUNK_SIZE];
+			bzero(file_buffer, CHUNK_SIZE);
 
-			int block_size = 0;
-			while((block_size = recv(sockfd, file_buf, CHUNK_SIZE, 0)) > 0){
-				int write_sz = fwrite(file_buf, sizeof(char), block_size, fw);
-				if(write_sz < block_size){
+			long int total_bytes_read = 0;
+			int bytes_read = 0;
+			while((bytes_read = recv(sockfd, file_buffer, CHUNK_SIZE, 0)) > 0){
+				int bytes_written = fwrite(file_buffer, sizeof(char), bytes_read, fw);
+				if(bytes_written < bytes_read){
 					error("File download failed.\n");
 				}
-                bzero(file_buf, CHUNK_SIZE);
-                if (block_size == 0 || block_size != CHUNK_SIZE)
-                {
-                    break;
-                }
- 				}
-		}else if(strcmp("subir",cmd) == 0){
+        bzero(file_buffer, CHUNK_SIZE);
+				total_bytes_read += bytes_read;
+				printSize(total_bytes_read);
+        if (bytes_read == 0 || bytes_read != CHUNK_SIZE){
+            break;
+        }
+ 			}
+			fclose(fw);
+		}else if(strcmp("subir", cmd) == 0){
 			printf("Comando: Subir\n");
-		}else if(strcmp("salir\n",cmd) == 0){
+			FILE *fs = fopen(filename, "r");
+			if(fs == NULL)
+			{
+					printf("ERROR: File %s not found.\n", filename);
+					exit(1);
+			}
+			char file_buffer[CHUNK_SIZE];
+			int block_size = 0;
+			while((block_size = fread(file_buffer, sizeof(char), CHUNK_SIZE, fs)) > 0){
+				if(send(sockfd, file_buffer, block_size, 0) < 0){
+					perror("send");
+					exit(1);
+				}
+				bzero(file_buffer, CHUNK_SIZE);
+			}
+			fclose(fs);
+		}else if(strcmp("salir\n", cmd) == 0){
 			printf("Cerrando el programa...\n");
 			return 0;
 		}else{
 			printf("Comando inválido.\n");
 		}
 	}
-
-	if ((numbytes = recv(sockfd, buf, MAXDATASIZE-1, 0)) == -1) {
-		perror("recv");
-		exit(1);
-	}
-
-	buf[numbytes] = '\0';
-	printf("Received: %s",buf);
 	close(sockfd);
 	return 0;
 }
