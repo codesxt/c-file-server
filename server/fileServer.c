@@ -36,7 +36,7 @@
 
 //File transfer constants
 #define COMMAND_SIZE 256			//Buffer size in bytes for client commands
-#define CHUNK_SIZE 128				//Number of bytes read from files to send or receive
+#define CHUNK_SIZE 16					//Number of bytes read from files to send or receive
 
 void sigchld_handler(int s)
 {
@@ -142,7 +142,7 @@ int main(){
 					//until there is no more to be read from file
 					int bytes_read = 0;
 					while((bytes_read = fread(file_buffer, sizeof(char), CHUNK_SIZE, fs)) > 0){
-						if(send(client_sockfd, file_buffer, block_size, 0) < 0){
+						if(send(client_sockfd, file_buffer, bytes_read, 0) < 0){
 							perror("send");
 							exit(1);
 						}

@@ -33,29 +33,32 @@
 #include "../lib/helpers.h"
 
 //File transfer constants
-#define CHUNK_SIZE 128
-#define COMMAND_SIZE 256
+#define CHUNK_SIZE 16							//Number of bytes read from files to send or receive
+#define COMMAND_SIZE 256					//Buffer size in bytes for client commands
 
 int main(int argc, char *argv[])
 {
-	int sockfd, numbytes;
+	int sockfd;														//Socket file descriptor
 
-	struct hostent *he;
-	struct sockaddr_in server_address;
+	struct hostent *he;										//Host address
+	struct sockaddr_in server_address;		//Server address
 
 	if (argc != 3) {
 		fprintf(stderr,"Uso: cliente host_address port\n");
 		exit(1);
 	}
 
+	//The program receives an address for the server and a port to connect to
 	char * address = argv[1];
 	int port = atoi(argv[2]);
 
+	//The host name is queried based on the name given in the command line
 	if ((he = gethostbyname(argv[1])) == NULL) {
 		perror("gethostbyname");
 		exit(1);
 	}
 
+	//Client-Server socket is initialized as SOCK_STREAM to transfer data based on a connection
 	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
 		perror("socket");
 		exit(1);
@@ -71,22 +74,28 @@ int main(int argc, char *argv[])
 		exit(1);
 	}
 
+	//Conection was successful
 	printf("Conexión exitosa al servidor %s:%d.\n", address, port);
 	char command[COMMAND_SIZE];
 	char *cmd;
 	char *filename;
 	while(1){
+		//Console stays waiting for commands
 		printf("Ingrese comandos: ");
 		memset(command, 0, sizeof(command));
 		fgets(command, sizeof(command), stdin);
+		//Command is separated in command and filename
+		//The command is then validated
 		cmd = strtok(command, " ");
 		filename = strtok(NULL, "\n");
 
 		if(strcmp("traer", cmd) == 0){
+			//Downloads file from server
 			printf("Comando: Traer\n");
 			char * request = concat(cmd, " ");
 			request = concat(request, filename);
 
+			//Sends a download request so the server starts sending the file
 			if (send(sockfd, request, strlen(request), 0) == -1)
 				perror("send");
 			free(request);
@@ -118,10 +127,12 @@ int main(int argc, char *argv[])
  			}
 			fclose(fw);
 		}else if(strcmp("subir", cmd) == 0){
+			//Uploads file to server
 			printf("Comando: Subir\n");
 			char * request = concat(cmd, " ");
 			request = concat(request, filename);
 
+			//Sends an upload request to the server so it stays waiting to receive the file
 			if (send(sockfd, request, strlen(request), 0) == -1)
 				perror("send");
 			free(request);
@@ -139,7 +150,7 @@ int main(int argc, char *argv[])
 			//until there is no more to be read from file
 			int bytes_read = 0;
 			while((bytes_read = fread(file_buffer, sizeof(char), CHUNK_SIZE, fs)) > 0){
-				if(send(sockfd, file_buffer, block_size, 0) < 0){
+				if(send(sockfd, file_buffer, bytes_read, 0) < 0){
 					perror("send");
 					exit(1);
 				}
